@@ -294,7 +294,7 @@ function createApp() {
 if (require.main === module) {
   const port = Number(process.env.PORT) || 3000;
   const app = createApp();
-  app.server.listen(port, '0.0.0.0', () => console.log('CENTURY running on http://localhost:' + port));
+  app.server.listen(port, '0.0.0.0', () => console.log('CENTURY running on port:' + port));
 }
 
 module.exports = { createApp };
