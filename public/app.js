@@ -7,17 +7,18 @@
   const LS = { session: 'century.session', name: 'century.name' };
 
   const S = {
-    session: null, // {code, token, id}
-    room: null, // latest server view
+    session: null, 
+    room: null, 
     es: null,
-    conn: 'idle', // idle | ok | reconnecting
-    sel: new Set(), // cards chosen to discard
-    pick: null, // {source:'deck'|'pile'|'center', card?}
+    conn: 'idle', 
+    sel: new Set(), 
+    pick: null, 
     sig: '',
     scores: false,
     busy: false,
     wasMyTurn: false,
     prefillCode: '',
+    chatHistory: [], // Chat Messages yahan save honge
   };
 
   // ---------- helpers ----------
@@ -59,6 +60,7 @@
   function goHome(msg) {
     if (S.es) { S.es.close(); S.es = null; }
     saveSession(null); S.room = null; S.conn = 'idle'; resetSel(); S.scores = false; S.prefillCode = '';
+    S.chatHistory = []; // Chat clear
     history.replaceState(null, '', '/');
     if (msg) toast(msg);
     render();
@@ -67,10 +69,25 @@
     if (S.es) S.es.close();
     const es = new EventSource('/api/events?code=' + encodeURIComponent(S.session.code) + '&token=' + encodeURIComponent(S.session.token));
     S.es = es;
-    es.addEventListener('state', (e) => { S.room = JSON.parse(e.data); S.conn = 'ok'; onState(); render(); });
+    
+    es.addEventListener('state', (e) => { 
+        S.room = JSON.parse(e.data); 
+        S.conn = 'ok'; 
+        onState(); 
+        render(); 
+    });
+
+    // CHAT RECEIVE
+    es.addEventListener('chat', (e) => {
+        const data = JSON.parse(e.data);
+        S.chatHistory.push(data);
+        if (S.chatHistory.length > 8) S.chatHistory.shift(); 
+        render(); 
+    });
+
     es.onerror = () => {
       S.conn = 'reconnecting'; render();
-      if (es.readyState === EventSource.CLOSED) setTimeout(recheck, 1500); // server refused: room gone or we were removed
+      if (es.readyState === EventSource.CLOSED) setTimeout(recheck, 1500); 
     };
   }
   async function recheck() {
@@ -110,12 +127,6 @@
       '<button class="btn ' + (code ? 'primary' : '') + ' block" data-act="join">Join room</button>' +
       (code ? '<div class="or">or</div><button class="btn block" data-act="create">Create my own room</button>' : '') +
       '</div>' +
-      '<details class="rules"><summary>How to play</summary><ul>' +
-      '<li><b>Goal:</b> get your hand total to <b>6 or less</b>, then call SHOW on your next turn. A=1, 2–10 face value, J/Q/K=10.</li>' +
-      '<li><b>Each turn:</b> discard one combination — a single, a pair / three / four of a kind, or three consecutive cards of the same suit — then pick exactly one card.</li>' +
-      '<li><b>Picking:</b> take one card from the previous player’s discard, or draw from the deck. (The first player may take the centre card instead.)</li>' +
-      '<li><b>SHOW:</b> everyone reveals. Lowest total wins the round, but if someone has strictly less than the caller, the caller gets +20 for each such player.</li>' +
-      '<li><b>Scoring:</b> every player scores their remaining hand. Reach 100 and you’re eliminated.</li></ul></details>' +
       '</div>';
   }
 
@@ -127,19 +138,21 @@
     return '<div class="wrap">' +
       '<div class="top"><span class="title">CENTURY</span><button class="btn small" data-act="leave">Leave</button></div>' +
       '<div class="panel center"><div class="muted">Room code</div><div class="room-code">' + esc(room.code) + '</div>' +
-      '<div class="row" style="justify-content:center"><button class="btn primary" data-act="copy">Copy invite link</button>' +
-      (navigator.share ? '<button class="btn" data-act="share">Share…</button>' : '') + '</div>' +
-      '<p class="muted" style="margin:10px 0 0;font-size:14px">Friends open the link (or enter the code) and type a name. 2–8 players.</p></div>' +
+      '<div class="row" style="justify-content:center"><button class="btn primary" data-act="copy">Copy invite link</button></div>' +
+      '</div>' +
       '<div class="panel" style="margin-top:14px"><h3 class="row" style="justify-content:space-between">Players <span class="muted" style="font-size:14px;font-weight:400">' + n + ' / 8</span></h3>' +
       '<ul class="plist">' + room.members.map((m) => '<li><span class="dot ' + (m.connected ? '' : 'off') + '"></span><span class="grow">' + esc(m.name) + '</span>' +
         (m.id === room.hostId ? '<span class="badge">Host</span>' : '') + (m.id === room.you ? '<span class="badge you">You</span>' : '') +
         (host && m.id !== room.you ? '<button class="btn small" data-act="remove" data-id="' + m.id + '">Remove</button>' : '') + '</li>').join('') + '</ul></div>' +
       '<div class="panel stack" style="margin-top:14px">' +
       (host
-        ? '<div><label class="lbl" for="hs">Starting hand size</label><select id="hs" class="field">' + hands.join('') + '</select>' +
-          '<div class="muted" style="font-size:13px;margin-top:6px">Maximum for ' + Math.max(2, n) + ' players: ' + room.maxHandSize + ' cards.</div></div>' +
+        ? '<div><label class="lbl" for="hs">Starting hand size</label><select id="hs" class="field">' + hands.join('') + '</select></div>' +
+          '<div><label class="lbl" for="mode">Game Mode</label><select id="mode" class="field">' +
+            '<option value="100" ' + (room.gameMode === '100' ? 'selected' : '') + '>100 Points (Elimination)</option>' +
+            '<option value="rounds" ' + (room.gameMode === 'rounds' ? 'selected' : '') + '>Winning Rounds Only</option>' +
+          '</select></div>' +
           '<button class="btn primary block" data-act="start"' + (n < 2 ? ' disabled' : '') + '>' + (n < 2 ? 'Waiting for another player…' : 'Start game') + '</button>'
-        : '<p class="center muted" style="margin:0">Waiting for the host to start the game…<br>Starting hand: ' + room.handSize + ' cards.</p>') +
+        : '<p class="center muted" style="margin:0">Waiting for the host to start the game…</p>') +
       '</div></div>';
   }
 
@@ -150,7 +163,7 @@
       const out = p.status !== 'active';
       return '<div class="pchip' + (g.turnId === p.id ? ' turn' : '') + (out ? ' out' : '') + '">' +
         '<div class="n"><span class="dot ' + (p.connected || p.status !== 'active' ? '' : 'off') + '"></span>' + esc(p.name) + (p.id === g.you.id ? ' <span class="badge you">You</span>' : '') + '</div>' +
-        '<div class="s">' + (out ? '<span>' + (p.status === 'left' ? 'Left' : 'Eliminated') + '</span>' : '<span>\u{1F0A0} <b>' + p.cards + '</b></span>') + '<span>Total <b>' + p.total + '</b></span></div></div>';
+        '<div class="s">' + (out ? '<span>' + (p.status === 'left' ? 'Left' : 'Eliminated') + '</span>' : '<span>🂠 <b>' + p.cards + ' Cards</b></span>') + '<span>Total <b>' + p.total + '</b></span></div></div>';
     }).join('') + '</div>';
   }
 
@@ -163,15 +176,14 @@
     const first = g.center !== null;
     const combo = S.sel.size ? Cards.validateCombo([...S.sel]) : null;
     const ready = mine && combo && combo.ok && S.pick;
-    const turnName = nameOf(g, g.turnId);
-
+    
     let status, hint = '';
     if (!me.inRound) status = 'You are watching this round.';
     else if (mine) {
       status = me.canShow ? 'Your turn — call SHOW, or play a move.' : 'Your turn';
       hint = !S.sel.size ? '1. Tap the card(s) you want to discard.' : !(combo && combo.ok) ? '' : !S.pick ? '2. Now tap the deck or a card to pick up.' : '3. Press “Play move”.';
     } else {
-      status = 'Waiting for ' + turnName + '…';
+      status = 'Waiting for ' + nameOf(g, g.turnId) + '…';
       if (me.handTotal <= 6) hint = 'You’re at ' + me.handTotal + ' — you can call SHOW when your turn comes.';
     }
 
@@ -202,6 +214,25 @@
         '</div>' : '') +
       '</div>' +
       '<div class="log">' + g.log.slice(-5).map((l) => '<div>' + esc(l) + '</div>').join('') + '</div>' +
+      
+      // CHAT BOX
+      '<div class="chat-box">' +
+          '<div class="chat-header">Game Chat</div>' +
+          '<div id="chat-messages" class="chat-messages">' +
+              // Safe map for chat history
+              (S.chatHistory || []).map(data => {
+                  const isMe = S.room && S.room.players && S.session && data.sender === S.room.players.find(p => p.id === S.session.id)?.name;
+                  return `<div class="chat-msg ${isMe ? 'my-msg' : ''}">
+                      <strong>${esc(data.sender)}</strong> <span class="time">${data.time}</span><br>${esc(data.text)}
+                  </div>`;
+              }).join('') +
+          '</div>' +
+          '<div class="chat-input-area">' +
+              '<input type="text" id="chat-input" placeholder="Type a message..." maxlength="50">' +
+              '<button id="chat-send-btn" class="btn small">Send</button>' +
+          '</div>' +
+      '</div>' +
+      
       '</div>';
   }
 
@@ -216,12 +247,11 @@
   }
 
   function scoreTable(g) {
-    return '<div class="scroll"><table class="tbl"><thead><tr><th>Player</th><th>Status</th><th title="Hand points, last round">Hand</th><th title="SHOW penalty, last round">Penalty</th><th>Round</th><th>Total</th><th>Wins</th></tr></thead><tbody>' +
+    return '<div class="scroll"><table class="tbl"><thead><tr><th>Player</th><th>Status</th><th>Hand</th><th>Penalty</th><th>Round</th><th>Total</th><th>Wins</th></tr></thead><tbody>' +
       g.players.map((p) => '<tr class="' + (p.status !== 'active' ? 'out' : '') + '"><td>' + esc(p.name) + '</td><td>' +
         (p.status === 'active' ? 'Active' : p.status === 'left' ? 'Left' : 'Eliminated') + '</td>' +
         '<td>' + (p.last ? p.last.hand : '–') + '</td><td>' + (p.last ? (p.last.penalty ? '+' + p.last.penalty : '0') : '–') + '</td><td>' + (p.last ? p.last.round : '–') + '</td>' +
-        '<td><b>' + p.total + '</b></td><td>' + p.roundsWon + '</td></tr>').join('') + '</tbody></table></div>' +
-      '<div class="muted" style="font-size:13px;margin-top:8px">Hand / Penalty / Round show the most recent finished round. Total is cumulative; 100 or more is elimination.</div>';
+        '<td><b>' + p.total + '</b></td><td>' + p.roundsWon + '</td></tr>').join('') + '</tbody></table></div>';
   }
 
   function viewRoundEnd(room) {
@@ -234,8 +264,7 @@
       '<h2>' + esc(winners.join(' & ')) + ' ' + (winners.length > 1 ? 'share the round' : 'wins the round') + '</h2>' +
       '<div class="muted">Lowest hand: ' + res.lowest + (res.winners.includes(res.declarerId) ? '' : ' — ' + esc(decl) + ' did not have the lowest hand') + '</div></div>' +
       '<div class="panel" style="margin-top:14px"><div class="scroll"><table class="tbl"><thead><tr><th>Player</th><th>Hand</th><th>Penalty</th><th>Round</th><th>Total</th></tr></thead><tbody>' +
-      res.rows.map((r) => '<tr class="' + (r.winner ? 'winner' : '') + '" style="border-top:1px solid var(--line)"><td style="border:0">' + esc(r.name) + '</td><td style="border:0">' + r.handPoints + '</td><td style="border:0">' + (r.penalty ? '+' + r.penalty : '0') + '</td><td style="border:0">' + r.roundPoints + '</td><td style="border:0"><b>' + r.total + '</b></td></tr>' +
-        '<tr class="' + (r.winner ? 'winner' : '') + '"><td colspan="5" style="border:0;text-align:left;padding-top:0">' + (r.winner ? '<span class="badge win">Winner</span> ' : '') + (r.declarer ? '<span class="badge">SHOW</span> ' : '') + (r.eliminated ? '<span class="badge bad">Eliminated</span>' : '') + miniCards(r.hand) + '</td></tr>').join('') +
+      res.rows.map((r) => '<tr class="' + (r.winner ? 'winner' : '') + '"><td>' + esc(r.name) + '</td><td>' + r.handPoints + '</td><td>' + (r.penalty ? '+' + r.penalty : '0') + '</td><td>' + r.roundPoints + '</td><td><b>' + r.total + '</b></td></tr>').join('') +
       '</tbody></table></div></div>' +
       '<div class="actions" style="margin-top:16px">' +
       (me && me.status !== 'left' ? '<button class="btn primary" data-act="next">' + (res.gameOver ? 'See final results' : 'Next round') + '</button>' : '') + '</div>' +
@@ -249,9 +278,9 @@
     return '<div class="wrap"><div class="top"><span class="title">CENTURY</span><span class="meta">Room ' + esc(room.code) + '</span></div>' +
       '<div class="panel banner"><div class="muted">Overall CENTURY winner</div><h2>\u{1F451} ' + esc(win.name) + '</h2><div class="muted">' + win.total + ' points · ' + win.roundsWon + ' round' + (win.roundsWon === 1 ? '' : 's') + ' won</div></div>' +
       '<div class="panel" style="margin-top:14px"><div class="scroll"><table class="tbl"><thead><tr><th>#</th><th>Player</th><th>Status</th><th>Total</th><th>Rounds won</th></tr></thead><tbody>' +
-      g.ranking.map((r) => '<tr><td class="rank" style="text-align:left">' + r.rank + '</td><td>' + esc(r.name) + '</td><td>' + (r.rank === 1 ? 'Winner' : r.status === 'left' ? 'Left' : 'Eliminated') + '</td><td><b>' + r.total + '</b></td><td>' + r.roundsWon + '</td></tr>').join('') +
+      g.ranking.map((r) => '<tr><td class="rank">' + r.rank + '</td><td>' + esc(r.name) + '</td><td>' + (r.rank === 1 ? 'Winner' : r.status === 'left' ? 'Left' : 'Eliminated') + '</td><td><b>' + r.total + '</b></td><td>' + r.roundsWon + '</td></tr>').join('') +
       '</tbody></table></div></div>' +
-      '<div class="actions" style="margin-top:16px">' + (host ? '<button class="btn primary" data-act="reset">Play again (back to lobby)</button>' : '<span class="muted">Waiting for the host to start a new game…</span>') +
+      '<div class="actions" style="margin-top:16px">' + (host ? '<button class="btn primary" data-act="reset">Play again</button>' : '<span class="muted">Waiting for host…</span>') +
       '<button class="btn" data-act="leave">Leave room</button></div></div>';
   }
 
@@ -262,10 +291,15 @@
     if (!S.session || !room) html = S.session ? '<div class="wrap center" style="padding-top:80px"><h2 class="serif">Connecting…</h2></div>' : viewHome();
     else html = room.game ? viewGame(room) : viewLobby(room);
     if (S.conn === 'reconnecting' && S.session) html = '<div class="conn">Reconnecting…</div>' + html;
-    if (S.scores && room && room.game) html += '<div class="modal" data-act="close-scores"><div class="sheet" data-stop><div class="row" style="justify-content:space-between;margin-bottom:8px"><h3 class="serif">Scoreboard</h3><button class="btn small" data-act="close-scores">Close</button></div>' + scoreTable(room.game) + '</div></div>';
-    const keep = (focus === 'name' || focus === 'code') ? { id: focus, v: document.getElementById(focus).value, s: document.getElementById(focus).selectionStart } : null;
+    
+    // Input focus retention (Taake message type karte waqt screen reset na ho)
+    const keep = (focus === 'name' || focus === 'code' || focus === 'chat-input') ? { id: focus, v: document.getElementById(focus).value, s: document.getElementById(focus).selectionStart } : null;
     $app.innerHTML = html;
     if (keep) { const el = document.getElementById(keep.id); if (el) { el.value = keep.v; el.focus(); try { el.setSelectionRange(keep.s, keep.s); } catch (e) { /* ignore */ } } }
+    
+    // Chat box ko automatically neeche scroll karein
+    const chatBox = document.getElementById('chat-messages');
+    if(chatBox) chatBox.scrollTop = chatBox.scrollHeight;
   }
 
   // ---------- events ----------
@@ -276,22 +310,40 @@
     finally { S.busy = false; }
   }
 
-  $app.addEventListener('input', (e) => { if (e.target.id === 'code') e.target.value = e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, ''); });
   $app.addEventListener('change', (e) => {
     if (e.target.id === 'hs') guarded(() => action('settings', { handSize: Number(e.target.value) }));
+    if (e.target.id === 'mode') guarded(() => action('settings', { gameMode: e.target.value }));
   });
+
   $app.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter' && (e.target.id === 'name' || e.target.id === 'code')) {
-      const code = document.getElementById('code').value.trim();
-      const btn = $app.querySelector(code ? '[data-act=join]' : '[data-act=create]');
-      if (btn) btn.click();
+    if (e.key === 'Enter') {
+        if (e.target.id === 'name' || e.target.id === 'code') {
+            const code = document.getElementById('code').value.trim();
+            const btn = $app.querySelector(code ? '[data-act=join]' : '[data-act=create]');
+            if (btn) btn.click();
+        }
+        if (e.target.id === 'chat-input') {
+            const btn = document.getElementById('chat-send-btn');
+            if (btn) btn.click();
+        }
     }
   });
+
   $app.addEventListener('click', (e) => {
+    // Chat Send Button Click
+    if (e.target.id === 'chat-send-btn') {
+        const input = document.getElementById('chat-input');
+        const text = input.value.trim();
+        if (text && S.session) {
+            guarded(() => action('chat', { text: text }));
+            input.value = '';
+        }
+        return;
+    }
+
     const el = e.target.closest('[data-act]');
     if (!el) return;
     const act = el.dataset.act;
-    if (act === 'close-scores') { if (el.classList.contains('modal') && e.target !== el) return; S.scores = false; return render(); }
     const room = S.room, g = room && room.game;
     switch (act) {
       case 'create': case 'join': return guarded(async () => {
@@ -309,10 +361,9 @@
         history.replaceState(null, '', '/?room=' + r.code);
         S.room = null; render(); connect();
       });
-      case 'copy': return navigator.clipboard && navigator.clipboard.writeText(inviteLink(room.code)).then(() => toast('Invite link copied', true), () => toast(inviteLink(room.code), true));
-      case 'share': return navigator.share({ title: 'CENTURY', text: 'Join my CENTURY card game! Room ' + room.code, url: inviteLink(room.code) }).catch(() => {});
+      case 'copy': return navigator.clipboard && navigator.clipboard.writeText(inviteLink(room.code)).then(() => toast('Invite link copied', true));
       case 'leave': if (!confirm('Leave this room?')) return;
-        return guarded(async () => { try { await action('leave'); } catch (err) { /* already gone */ } goHome(); });
+        return guarded(async () => { try { await action('leave'); } catch (err) { /* ignore */ } goHome(); });
       case 'start': return guarded(() => action('start'));
       case 'remove': return guarded(() => action('remove', { target: el.dataset.id }));
       case 'reset': return guarded(() => action('reset'));
@@ -320,7 +371,7 @@
       case 'scores': S.scores = true; return render();
       case 'toggle': {
         const id = Number(el.dataset.card);
-        if (S.sel.has(id)) S.sel.delete(id); else if (S.sel.size < 4) S.sel.add(id);
+        if (S.sel.has(id)) S.sel.delete(id); else if (S.sel.size < 13) S.sel.add(id);
         return render();
       }
       case 'pick-deck': S.pick = { source: 'deck' }; return render();
@@ -332,7 +383,7 @@
         await action('play', body);
         resetSel();
       });
-      case 'show': if (!confirm('Call SHOW with ' + g.you.handTotal + ' points? Everyone reveals their hand. If anyone has strictly fewer points you get +20 for each of them.')) return;
+      case 'show': if (!confirm('Call SHOW with ' + g.you.handTotal + ' points? Everyone reveals their hand.')) return;
         return guarded(() => action('show'));
     }
   });
@@ -346,7 +397,7 @@
     if (saved && saved.code && saved.token && (!urlCode || urlCode === saved.code)) {
       S.session = saved;
       render();
-      recheck(); // confirms the seat still exists, then opens the live connection
+      recheck(); 
       return;
     }
     S.prefillCode = urlCode;

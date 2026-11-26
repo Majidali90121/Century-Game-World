@@ -1,15 +1,16 @@
 'use strict';
-/* CENTURY web server: zero npm dependencies.
-   - Static files for the browser client
-   - JSON API for actions (POST)
-   - Server-Sent Events for live, per-player state pushes (a player only ever
-     receives their own hand)
-   Rooms live in memory (see README for what that means on free hosting). */
+/*  */
+const express=require('express')
+
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const { Game, GameError } = require('./lib/game');
+const { Server }=require('socket.io')
+const app=express()
+const server=http.createServer(app);
+const io=new Server(server,{cors:{origin:'*'}})
 
 const PUBLIC_DIR = path.join(__dirname, 'public');
 const STATIC = {
@@ -25,11 +26,13 @@ const MAX_ROOMS = 1000;
 const ROOM_IDLE_MS = 6 * 60 * 60 * 1000; // delete rooms nobody touched for 6 hours
 const HEARTBEAT_MS = 15000;
 
+  
 function createApp() {
   const rooms = new Map();
 
   const rid = (bytes) => crypto.randomBytes(bytes).toString('hex');
   const connectedIds = (room) => new Set([...room.clients.keys()].filter((id) => room.clients.get(id).size > 0));
+
 
   function makeCode() {
     for (let tries = 0; tries < 50; tries++) {
@@ -100,16 +103,21 @@ function createApp() {
       case 'settings': {
         if (!isHost) throw new GameError('Only the host can change settings.');
         if (room.game) throw new GameError('The game has already started.');
+        if(body.handSize){
         const n = Number(body.handSize);
         if (!Number.isInteger(n) || n < 5 || n > 10) throw new GameError('Starting hand must be between 5 and 10.');
         room.handSize = n;
+        }
+        if(body.gameMode){
+          room.gameMode=body.gameMode
+        }
         return;
       }
       case 'start': {
         if (!isHost) throw new GameError('Only the host can start the game.');
         if (room.game) throw new GameError('The game has already started.');
         if (room.players.length < 2) throw new GameError('You need at least 2 players.');
-        room.game = new Game(room.players.map((p) => ({ id: p.id, name: p.name })), { handSize: room.handSize });
+        room.game = new Game(room.players.map((p) => ({ id: p.id, name: p.name })), { handSize: room.handSize,gameMode:room.gameMode || '100' });
         return;
       }
       case 'play': {
@@ -150,6 +158,22 @@ function createApp() {
         if (!isHost) throw new GameError('Only the host can start a new game.');
         if (!room.game || room.game.phase !== 'gameEnd') throw new GameError('The game is not finished yet.');
         room.game = null;
+        return;
+      }
+      case 'chat': {
+        if(!room.game) throw new GameError('Game has not started');
+        const chatData = { 
+            sender: me.name, 
+            text: body.text, 
+            time: new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}) 
+        };
+        for (const p of room.players){
+          const set = room.clients.get(p.id); // Yahan 'clients' likhein
+          if(set && set.size) {
+            const payload = 'event: chat\ndata: ' + JSON.stringify(chatData) + '\n\n';
+            for (const res of set) res.write(payload);
+          }
+        }
         return;
       }
       default:
@@ -197,7 +221,8 @@ function createApp() {
       rooms.set(room.code, room);
       return send(res, 200, { code: room.code, token: me.token, id: me.id });
     }
-
+    
+    
     if (url.pathname === '/api/join') {
       const room = findRoom(body.code);
       if (!room) return send(res, 404, { error: 'Room not found. Check the code.' });
@@ -291,10 +316,14 @@ function createApp() {
   return { server, rooms, close: () => { clearInterval(sweeper); server.closeAllConnections && server.closeAllConnections(); server.close(); } };
 }
 
+
+
 if (require.main === module) {
   const port = Number(process.env.PORT) || 3000;
   const app = createApp();
   app.server.listen(port, '0.0.0.0', () => console.log('CENTURY running on port:' + port));
 }
+
+
 
 module.exports = { createApp };

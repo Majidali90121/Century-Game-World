@@ -153,3 +153,62 @@ details.rules li{margin:6px 0}
 .top .row{flex-wrap:nowrap}
 .top .meta{font-size:13px;text-align:center;flex:1}
 @media(max-width:520px){.top .meta{display:none}}
+/* Chat Box Container */
+.chat-box {
+    margin-top: 15px;
+    background: rgba(0, 0, 0, 0.4);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    height: 220px; /* Height thori kam ki hai taake screen par fit aaye */
+}
+
+.chat-header {
+    background: rgba(255, 255, 255, 0.1);
+    padding: 8px 12px;
+    font-weight: bold;
+    font-size: 14px;
+    border-bottom: 1px solid var(--line);
+}
+
+.chat-messages {
+    flex: 1;
+    padding: 10px;
+    overflow-y: auto;
+    font-size: 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+/* Input Area (Yeh missing tha) */
+.chat-input-area {
+    display: flex;
+    padding: 8px;
+    background: rgba(0, 0, 0, 0.3);
+    border-top: 1px solid var(--line);
+}
+
+.chat-input-area input {
+    flex: 1; /* Input ko poori jagah lene dega */
+    padding: 8px 12px;
+    border-radius: 6px;
+    border: 1px solid var(--line);
+    background: rgba(255, 255, 255, 0.1);
+    color: white;
+    margin-right: 8px;
+    outline: none;
+}
+
+.chat-input-area button {
+    margin: 0;
+    padding: 8px 15px;
+    border-radius: 6px;
+    background: var(--gold);
+    color: black;
+    font-weight: bold;
+    border: none;
+    cursor: pointer;
+}
