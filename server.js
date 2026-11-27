@@ -1,12 +1,10 @@
 'use strict';
 /*  */
-
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const { Game, GameError } = require('./lib/game');
-
 const PUBLIC_DIR = path.join(__dirname, 'public');
 const STATIC = {
   '/': ['index.html', 'text/html; charset=utf-8'],

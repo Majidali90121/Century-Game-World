@@ -403,6 +403,7 @@
       case 'toggle': {
         const id = Number(el.dataset.card);
         if (S.sel.has(id)) S.sel.delete(id); else if (S.sel.size < 13) S.sel.add(id);
+        
         return render();
       }
       case 'pick-deck': S.pick = { source: 'deck' }; return render();
