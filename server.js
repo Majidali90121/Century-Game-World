@@ -1,16 +1,11 @@
 'use strict';
 /*  */
-const express=require('express')
 
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const { Game, GameError } = require('./lib/game');
-const { Server }=require('socket.io')
-const app=express()
-const server=http.createServer(app);
-const io=new Server(server,{cors:{origin:'*'}})
 
 const PUBLIC_DIR = path.join(__dirname, 'public');
 const STATIC = {
@@ -65,10 +60,11 @@ function createApp() {
       code: room.code,
       hostId: room.hostId,
       you: me.id,
+      gameMode: room.gameMode || '100',
       handSize: room.handSize,
       maxHandSize: Game.maxHandSize(Math.max(2, room.players.length)),
       members: room.players.map((p) => ({ id: p.id, name: p.name, connected: online.has(p.id) })),
-      game,
+      game:room.game?room.game.view(me.id):null,
     };
   }
 

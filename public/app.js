@@ -292,6 +292,15 @@
     else html = room.game ? viewGame(room) : viewLobby(room);
     if (S.conn === 'reconnecting' && S.session) html = '<div class="conn">Reconnecting…</div>' + html;
     
+    if(S.scores && room && room.game){
+      html += `<div class="modal" data-act="close-scores"><div class="sheet" data-stop>`+
+               `<div class="row" style="justify-content:space-bteween,margin-bottom:8px">`+
+               `<h3 class="serif">Scoreboard</h3>`+
+               `<button class="btn small" data-act="close-scores">Closed</button>`+
+               `</div>`+
+               scoreTable(room.game)+
+               `</div></div>`
+    }
     // Input focus retention (Taake message type karte waqt screen reset na ho)
     const keep = (focus === 'name' || focus === 'code' || focus === 'chat-input') ? { id: focus, v: document.getElementById(focus).value, s: document.getElementById(focus).selectionStart } : null;
     $app.innerHTML = html;
@@ -369,6 +378,28 @@
       case 'reset': return guarded(() => action('reset'));
       case 'next': return guarded(() => action('next'));
       case 'scores': S.scores = true; return render();
+      case 'close-scores':
+        if(S.scores){
+          const modal=document.querySelector('.modal')
+          const closeBtn= document.querySelector('[data-act="close-scores"]')
+          if(modal){
+            modal.onclick = (e)=>{
+              if(e.target === modal){
+                S.scores=false;
+                render();
+              }
+            }
+          }
+          if(closeBtn){
+            closeBtn.onclick=(e)=>{
+              e.preventDefault();
+              e.stopPropagation();
+              S.scores=false;
+              render();
+            }
+          }
+        }
+        break;
       case 'toggle': {
         const id = Number(el.dataset.card);
         if (S.sel.has(id)) S.sel.delete(id); else if (S.sel.size < 13) S.sel.add(id);
