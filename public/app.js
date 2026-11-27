@@ -262,7 +262,9 @@
     return '<div class="wrap"><div class="top"><span class="title">CENTURY</span><span class="meta">Room ' + esc(room.code) + '</span></div>' +
       '<div class="panel banner"><div class="muted">Round ' + res.round + ' — ' + esc(decl) + ' called SHOW</div>' +
       '<h2>' + esc(winners.join(' & ')) + ' ' + (winners.length > 1 ? 'share the round' : 'wins the round') + '</h2>' +
-      '<div class="muted">Lowest hand: ' + res.lowest + (res.winners.includes(res.declarerId) ? '' : ' — ' + esc(decl) + ' did not have the lowest hand') + '</div></div>' +
+      '<div class="muted">Lowest hand: ' + res.lowest + (res.winners.includes(res.declarerId) ? '' :
+        res.callerTied ? ' — ' + esc(decl) + ' tied for the lowest hand, and a tie counts against the one who called SHOW'
+          : ' — ' + esc(decl) + ' did not have the lowest hand') + '</div></div>' +
       '<div class="panel" style="margin-top:14px"><div class="scroll"><table class="tbl"><thead><tr><th>Player</th><th>Hand</th><th>Penalty</th><th>Round</th><th>Total</th></tr></thead><tbody>' +
       res.rows.map((r) => '<tr class="' + (r.winner ? 'winner' : '') + '"><td>' + esc(r.name) + '</td><td>' + r.handPoints + '</td><td>' + (r.penalty ? '+' + r.penalty : '0') + '</td><td>' + r.roundPoints + '</td><td><b>' + r.total + '</b></td></tr>').join('') +
       '</tbody></table></div></div>' +
@@ -294,9 +296,9 @@
     
     if(S.scores && room && room.game){
       html += `<div class="modal" data-act="close-scores"><div class="sheet" data-stop>`+
-               `<div class="row" style="justify-content:space-bteween,margin-bottom:8px">`+
+               `<div class="row" style="justify-content:space-between;margin-bottom:8px">`+
                `<h3 class="serif">Scoreboard</h3>`+
-               `<button class="btn small" data-act="close-scores">Closed</button>`+
+               `<button class="btn small" data-act="close-scores">Close</button>`+
                `</div>`+
                scoreTable(room.game)+
                `</div></div>`
@@ -354,6 +356,7 @@
     if (!el) return;
     const act = el.dataset.act;
     const room = S.room, g = room && room.game;
+    const myTurn = !!(g && g.phase === 'playing' && g.turnId === g.you.id && g.you.inRound);
     switch (act) {
       case 'create': case 'join': return guarded(async () => {
         const name = document.getElementById('name').value.trim();
@@ -379,36 +382,19 @@
       case 'next': return guarded(() => action('next'));
       case 'scores': S.scores = true; return render();
       case 'close-scores':
-        if(S.scores){
-          const modal=document.querySelector('.modal')
-          const closeBtn= document.querySelector('[data-act="close-scores"]')
-          if(modal){
-            modal.onclick = (e)=>{
-              if(e.target === modal){
-                S.scores=false;
-                render();
-              }
-            }
-          }
-          if(closeBtn){
-            closeBtn.onclick=(e)=>{
-              e.preventDefault();
-              e.stopPropagation();
-              S.scores=false;
-              render();
-            }
-          }
-        }
-        break;
+        // The backdrop closes the sheet, but a click on the sheet's own content must not.
+        if (el.classList.contains('modal') && e.target.closest('[data-stop]')) return;
+        S.scores = false;
+        return render();
       case 'toggle': {
+        if (!myTurn) return; // cards of a player who is waiting are display-only
         const id = Number(el.dataset.card);
         if (S.sel.has(id)) S.sel.delete(id); else if (S.sel.size < 13) S.sel.add(id);
-        
         return render();
       }
-      case 'pick-deck': S.pick = { source: 'deck' }; return render();
-      case 'pick-center': S.pick = { source: 'center' }; return render();
-      case 'pick-pile': S.pick = { source: 'pile', card: Number(el.dataset.card) }; return render();
+      case 'pick-deck': if (!myTurn) return; S.pick = { source: 'deck' }; return render();
+      case 'pick-center': if (!myTurn) return; S.pick = { source: 'center' }; return render();
+      case 'pick-pile': if (!myTurn) return; S.pick = { source: 'pile', card: Number(el.dataset.card) }; return render();
       case 'play': return guarded(async () => {
         const body = { discard: [...S.sel], source: S.pick.source };
         if (S.pick.card != null) body.card = S.pick.card;
